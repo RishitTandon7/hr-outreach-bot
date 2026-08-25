@@ -78,9 +78,26 @@ Best regards,
 {your_portfolio}"""
 
 
+# Only models with nonzero RPM quota on the account's AI Studio rate-limit
+# page — models showing 0/0 there aren't enabled for this account/tier.
+GEMINI_MODELS = [
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-3-flash",
+    "gemini-3.1-flash-lite",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.6-flash",
+    "gemini-3.7-flash",
+]
+MAX_GEMINI_ATTEMPTS = 12
+
+
 def gemini_custom_line(company, title):
-    """Ask Gemini for one personalized sentence about the company. Falls back
-    to a generic line if every key fails or no keys are configured."""
+    """Ask Gemini for one personalized sentence about the company, rotating
+    across both API keys and models to spread load and dodge per-model rate
+    limits. Falls back to a generic line if every attempt fails or no keys
+    are configured."""
     fallback = f"I'd love the chance to contribute to {company}'s engineering team."
     if not GEMINI_API_KEYS:
         return fallback
@@ -94,13 +111,13 @@ def gemini_custom_line(company, title):
         f"hashtags, no quotation marks, just the sentence."
     )
 
-    keys = GEMINI_API_KEYS[:]
-    random.shuffle(keys)
-    for key in keys:
+    attempts = [(key, model) for key in GEMINI_API_KEYS for model in GEMINI_MODELS]
+    random.shuffle(attempts)
+    for key, model in attempts[:MAX_GEMINI_ATTEMPTS]:
         try:
             url = (
                 "https://generativelanguage.googleapis.com/v1beta/models/"
-                f"gemini-2.0-flash:generateContent?key={key}"
+                f"{model}:generateContent?key={key}"
             )
             payload = json.dumps({
                 "contents": [{"parts": [{"text": prompt}]}]
@@ -114,7 +131,7 @@ def gemini_custom_line(company, title):
             if text:
                 return text
         except Exception as e:
-            print(f"  [gemini key ...{key[-4:]} failed: {e}]")
+            print(f"  [gemini key ...{key[-4:]} / {model} failed: {e}]")
             continue
     return fallback
 
