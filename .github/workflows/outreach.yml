@@ -1,0 +1,51 @@
+name: HR Outreach Bot
+
+on:
+  schedule:
+    # Runs every hour, 9:00-19:00 IST (03:30-13:30 UTC), every day.
+    # IST = UTC+5:30, so 9am IST = 3:30am UTC.
+    - cron: "30 3-13 * * *"
+  workflow_dispatch:
+    inputs:
+      batch_size:
+        description: "Contacts to send this run"
+        required: false
+        default: "12"
+      dry_run:
+        description: "true = generate emails but don't send"
+        required: false
+        default: "false"
+
+jobs:
+  send-batch:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: outreach-bot
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run outreach batch
+        env:
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
+          RESUME_PATH: resume.pdf
+          BATCH_SIZE: ${{ github.event.inputs.batch_size || '12' }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+        run: python outreach_bot.py
+
+      - name: Regenerate dashboard
+        run: python generate_dashboard.py contacts.csv dashboard.html
+
+      - name: Commit updated tracker + dashboard
+        run: |
+          git config user.name "outreach-bot"
+          git config user.email "outreach-bot@users.noreply.github.com"
+          git add contacts.csv dashboard.html
+          git diff --cached --quiet || git commit -m "Outreach bot: batch update $(date -u +'%Y-%m-%d %H:%M UTC')"
+          git push
