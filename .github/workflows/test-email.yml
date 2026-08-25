@@ -1,0 +1,32 @@
+name: Test Email
+
+on:
+  workflow_dispatch:
+    inputs:
+      to:
+        description: "Address to send the test email to"
+        required: false
+        default: "kingrishit1@gmail.com"
+      dry_run:
+        description: "true = print the email but don't send"
+        required: false
+        default: "false"
+
+jobs:
+  send-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Send test email
+        env:
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          TEST_TO: ${{ github.event.inputs.to || 'kingrishit1@gmail.com' }}
+          RESUME_PATH: resume.pdf
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+        run: python send_test_email.py
