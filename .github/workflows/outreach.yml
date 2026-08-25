@@ -39,6 +39,12 @@ jobs:
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
         run: python outreach_bot.py
 
+      - name: Check for replies
+        env:
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: python check_replies.py
+
       - name: Regenerate dashboard
         run: python generate_dashboard.py contacts.csv docs/dashboard.html
 
