@@ -16,6 +16,9 @@ on:
         required: false
         default: "false"
 
+permissions:
+  contents: write
+
 jobs:
   send-batch:
     runs-on: ubuntu-latest
@@ -36,7 +39,12 @@ jobs:
           GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
           RESUME_PATH: resume.pdf
           BATCH_SIZE: ${{ github.event.inputs.batch_size || '12' }}
-          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          # Manual runs (workflow_dispatch) use whatever dry_run you pick.
+          # The hourly schedule has no such input, so it only ever sends for
+          # real once the OUTREACH_LIVE repo variable is explicitly set to
+          # "true" (Settings -> Secrets and variables -> Actions -> Variables).
+          # Until then it silently stays a dry run, even on schedule.
+          DRY_RUN: ${{ github.event.inputs.dry_run || (vars.OUTREACH_LIVE == 'true' && 'false' || 'true') }}
         run: python outreach_bot.py
 
       - name: Check for replies

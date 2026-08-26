@@ -25,6 +25,7 @@ Optional:
 """
 
 import os
+import re
 import csv
 import time
 import random
@@ -42,7 +43,7 @@ RESUME_PATH = os.environ.get("RESUME_PATH", "resume.pdf")
 
 GMAIL_ADDRESS = os.environ.get("GMAIL_ADDRESS")
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
-GEMINI_API_KEYS = [k.strip() for k in os.environ.get("GEMINI_API_KEYS", "").split(",") if k.strip()]
+GEMINI_API_KEYS = [k.strip() for k in re.split(r"[,\s]+", os.environ.get("GEMINI_API_KEYS", "")) if k.strip()]
 
 YOUR_NAME = "Rishit Tandon"
 YOUR_PHONE = "+91 7394865520"
