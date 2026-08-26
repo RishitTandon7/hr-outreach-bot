@@ -8,7 +8,8 @@ Designed to be triggered once per hour by GitHub Actions (see
   1. Loads contacts.csv
   2. Picks the next BATCH_SIZE rows where Status is empty (already sorted by
      priority tier, so Tier 1 always goes first)
-  3. Asks Gemini for one custom personalization line per company
+  3. Asks Gemini to classify the company into one of a fixed set of
+     categories, then picks the matching hand-written hook line for it
   4. Sends the email via Gmail SMTP with your resume attached
   5. Writes Status=Sent, Date Contacted, and a Follow-up Date (+6 days) back
      into contacts.csv, then commits the file (done by the workflow, not here)
@@ -45,38 +46,44 @@ GMAIL_ADDRESS = os.environ.get("GMAIL_ADDRESS")
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
 GEMINI_API_KEYS = [k.strip() for k in re.split(r"[,\s]+", os.environ.get("GEMINI_API_KEYS", "")) if k.strip()]
 
-YOUR_NAME = "Rishit Tandon"
+YOUR_NAME = "Rishit"
 YOUR_PHONE = "+91 7394865520"
 YOUR_LINKEDIN = "linkedin.com/in/rishit-tandon-928661287"
 YOUR_GITHUB = "github.com/RishitTandon7"
 YOUR_PORTFOLIO = "portfolio.rishit.site"
 
-PROFILE_SNAPSHOT = """- Research Intern (ML & Image Processing) at SRM IST x NIDM, building a satellite-based Glacial Lake Outburst Flood (GLOF) early-warning pipeline
-- Prior SDE internship at DGTL Innovations
-- 12+ national/international hackathon wins, including 1st place at RoboRoarZ Singapore 2024 and SEISMO HACK 1.0
-- 80-90+ public projects on GitHub spanning AI/ML, full-stack, and robotics/IoT"""
+HIGHLIGHTS = (
+    "12+ hackathon wins (incl. 1st at RoboRoarZ Singapore 2024), SDE "
+    "internship at DGTL Innovations, 80+ public repos across ML/full-stack/robotics."
+)
 
 EMAIL_BODY_TEMPLATE = """Hi {first_name},
 
-Hope you're doing well. I know inboxes like yours get a lot of these, so I'll keep it brief.
+I'm {your_name}, a final-year CS student at SRM, currently looking for full-time AI/ML or SDE roles. {hook}
 
-I'm {your_name}, a final-year B.Tech Computer Science student at SRM Institute of Science and Technology (graduating 2027), currently looking for full-time AI/ML Engineer or SDE opportunities.
+Quick highlights: {highlights}
 
-A quick snapshot of my profile:
-{profile_snapshot}
+Resume attached — open to a quick call, or happy to be pointed to the right person on the team.
 
-{custom_line}
-
-I'd be grateful if you could consider my profile for any current or upcoming openings at {company}. I've attached my resume for reference.
-
-Thank you for your time — I really appreciate it.
-
-Best regards,
+Best,
 {your_name}
-{your_phone}
-{your_linkedin}
-{your_github}
-{your_portfolio}"""
+{your_phone} | {your_linkedin} | {your_github} | {your_portfolio}"""
+
+SUBJECT_TEMPLATE = "Final-year SDE/ML engineer — {company}"
+
+# Curated hook lines, one per category — these are fixed, hand-written text.
+# Gemini is only ever asked to classify the company into one of these
+# categories, never to write prose, so the sentence that actually goes out
+# is always exactly what's below.
+HOOK_BANK = {
+    "fintech": "I built Agent Marketplace, a Razorpay + AWS-integrated platform, and run a live payments side business.",
+    "infra": "I designed QML·PLACE, a quantum ML system for VLSI placement showing 8-15% gains over OpenROAD.",
+    "consumer": "I built SplitFair, a UPI-integrated expense-splitting app with a live React Native release.",
+    "robotics": "I led Arclyth, a drone swarm system that won SEISMO HACK 1.0.",
+    "ai": "I built DocMind, a Graph RAG platform using LangGraph and Neo4j.",
+    "climate": "I built a satellite-based flood early-warning pipeline as a research intern at SRM x NIDM.",
+}
+DEFAULT_HOOK = "I'd love the chance to bring that same hands-on, ship-fast approach to {company}'s engineering team."
 
 
 # Only models with nonzero RPM quota on the account's AI Studio rate-limit
@@ -94,22 +101,22 @@ GEMINI_MODELS = [
 MAX_GEMINI_ATTEMPTS = 12
 
 
-def gemini_custom_line(company, title):
-    """Ask Gemini for one personalized sentence about the company, rotating
-    across both API keys and models to spread load and dodge per-model rate
-    limits. Falls back to a generic line if every attempt fails or no keys
-    are configured."""
-    fallback = f"I'd love the chance to contribute to {company}'s engineering team."
+def classify_company_category(company, title):
+    """Ask Gemini to classify the company into one of HOOK_BANK's categories
+    (never to write prose — the actual hook sentence sent is always the
+    fixed, hand-written text in HOOK_BANK). Rotates across both API keys
+    and models to spread load and dodge per-model rate limits. Returns None
+    if every attempt fails, no keys are configured, or the reply doesn't
+    match a known category."""
     if not GEMINI_API_KEYS:
-        return fallback
+        return None
 
+    categories = list(HOOK_BANK.keys())
     prompt = (
-        f"Write ONE short, genuine-sounding sentence (max 25 words) for a cold "
-        f"outreach email to a company called '{company}', where the recipient's "
-        f"title is '{title}'. The sentence should show light familiarity with "
-        f"what a company like this likely does, and express interest in "
-        f"contributing there as an AI/ML or software engineer. No fluff, no "
-        f"hashtags, no quotation marks, just the sentence."
+        f"Classify the company '{company}' (a contact there has the title "
+        f"'{title}') into exactly ONE of these categories based on its "
+        f"primary business: {', '.join(categories)}, other. "
+        f"Reply with only the single category word, nothing else."
     )
 
     attempts = [(key, model) for key in GEMINI_API_KEYS for model in GEMINI_MODELS]
@@ -128,13 +135,22 @@ def gemini_custom_line(company, title):
             )
             with urllib.request.urlopen(req, timeout=15) as resp:
                 data = json.loads(resp.read().decode())
-            text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-            if text:
-                return text
+            text = data["candidates"][0]["content"]["parts"][0]["text"].strip().lower()
+            for category in categories:
+                if category in text:
+                    return category
+            return None
         except Exception as e:
             print(f"  [gemini key ...{key[-4:]} / {model} failed: {e}]")
             continue
-    return fallback
+    return None
+
+
+def pick_hook(company, title):
+    category = classify_company_category(company, title)
+    if category and category in HOOK_BANK:
+        return HOOK_BANK[category]
+    return DEFAULT_HOOK.format(company=company)
 
 
 def send_email(to_email, subject, body, resume_path):
@@ -193,32 +209,34 @@ def main():
         first_name = name.split()[0] if name else "there"
 
         print(f"-> {name} ({title}) at {company} <{email}>")
-        custom_line = gemini_custom_line(company, title)
+        hook = pick_hook(company, title)
 
         body = EMAIL_BODY_TEMPLATE.format(
             first_name=first_name,
             your_name=YOUR_NAME,
-            profile_snapshot=PROFILE_SNAPSHOT,
-            custom_line=custom_line,
-            company=company,
+            hook=hook,
+            highlights=HIGHLIGHTS,
             your_phone=YOUR_PHONE,
             your_linkedin=YOUR_LINKEDIN,
             your_github=YOUR_GITHUB,
             your_portfolio=YOUR_PORTFOLIO,
         )
-        subject = f"Application for AI/ML & SDE Roles — {YOUR_NAME} (Final Year, SRM)"
+        subject = SUBJECT_TEMPLATE.format(company=company)
 
         ok = send_email(email, subject, body, RESUME_PATH)
-        today = datetime.now().strftime("%Y-%m-%d")
-        followup = (datetime.now() + timedelta(days=6)).strftime("%Y-%m-%d")
 
-        if ok:
+        if DRY_RUN:
+            # Never mutate contacts.csv during a dry run — leave Status
+            # blank so a real run still picks these same contacts up.
+            if ok:
+                sent_count += 1
+        elif ok:
             row["Status"] = "Sent"
-            row["Date Contacted"] = today
-            row["Follow-up Date"] = followup
+            row["Date Contacted"] = datetime.now().strftime("%Y-%m-%d")
+            row["Follow-up Date"] = (datetime.now() + timedelta(days=6)).strftime("%Y-%m-%d")
             sent_count += 1
         else:
-            row["Status"] = "Bounced" if not DRY_RUN else "Not Started"
+            row["Status"] = "Bounced"
 
         # gentle pacing between sends within the batch (avoid spam-pattern bursts)
         time.sleep(random.uniform(3, 8))
