@@ -1,0 +1,50 @@
+name: Outreach Watchdog
+
+on:
+  schedule:
+    # Runs every 20 minutes during business hours, offset from outreach.yml's
+    # own :30 schedule. GitHub's schedule trigger occasionally stalls for a
+    # workflow with no error or notification -- this checks whether the main
+    # bot has actually run recently and re-triggers it if not, so a single
+    # stalled schedule doesn't silently cost hours of sending.
+    - cron: "*/20 3-13 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  check-and-trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check last outreach run and re-trigger if stale
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          last_run=$(gh run list -R "$GITHUB_REPOSITORY" --workflow=outreach.yml --limit 1 --json createdAt,status --jq '.[0]')
+          last_created=$(echo "$last_run" | jq -r '.createdAt // empty')
+          last_status=$(echo "$last_run" | jq -r '.status // empty')
+
+          if [ -z "$last_created" ]; then
+            echo "No prior outreach runs found -- triggering one."
+            gh workflow run outreach.yml -R "$GITHUB_REPOSITORY" -f batch_size=12 -f dry_run=false
+            exit 0
+          fi
+
+          last_epoch=$(date -d "$last_created" +%s)
+          now_epoch=$(date -u +%s)
+          age_min=$(( (now_epoch - last_epoch) / 60 ))
+          echo "Last outreach run: $last_created ($age_min minutes ago, status=$last_status)"
+
+          if [ "$last_status" = "in_progress" ] || [ "$last_status" = "queued" ]; then
+            echo "A run is already active -- nothing to do."
+            exit 0
+          fi
+
+          if [ "$age_min" -ge 75 ]; then
+            echo "Last run is $age_min minutes old (>=75) -- triggering a catch-up batch."
+            gh workflow run outreach.yml -R "$GITHUB_REPOSITORY" -f batch_size=12 -f dry_run=false
+          else
+            echo "Last run is recent enough ($age_min min) -- nothing to do."
+          fi
