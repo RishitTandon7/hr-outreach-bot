@@ -55,13 +55,13 @@
 </head>
 <body>
   <h1>HR Outreach Dashboard</h1>
-  <div class="subtitle">Generated 2026-10-02 &middot; 2054 total contacts</div>
+  <div class="subtitle">Generated 2026-10-03 &middot; 2054 total contacts</div>
 
   <div class="cards">
     <div class="card blue"><div class="num">2054</div><div class="label">Sent</div></div>
     <div class="card green"><div class="num">21</div><div class="label">Replied (1.0%)</div></div>
-    <div class="card yellow"><div class="num">1959</div><div class="label">Ghosted (95.4%)</div></div>
-    <div class="card blue"><div class="num">74</div><div class="label">Awaiting reply</div></div>
+    <div class="card yellow"><div class="num">2019</div><div class="label">Ghosted (98.3%)</div></div>
+    <div class="card blue"><div class="num">14</div><div class="label">Awaiting reply</div></div>
     <div class="card red"><div class="num">0</div><div class="label">Bounced</div></div>
     <div class="card gray"><div class="num">0</div><div class="label">Not started yet</div></div>
   </div>
@@ -105,8 +105,8 @@
           <td>Tier 3 - Staffing</td>
           <td>84</td>
           <td>0</td>
-          <td>74</td>
-          <td>10</td>
+          <td>14</td>
+          <td>70</td>
           <td>0</td>
           <td>0</td>
         </tr>
@@ -212,7 +212,7 @@
           <td>BPO Convergence</td>
           <td>Anju Tyagi</td>
           <td>2026-09-26</td>
-          <td><span class="badge badge-awaiting-reply">Awaiting reply</span></td>
+          <td><span class="badge badge-ghosted">Ghosted</span></td>
         </tr>
       </tbody>
     </table>
@@ -221,7 +221,7 @@
   <div class="updated">Regenerate this file any time by running <code>python generate_dashboard.py</code> after the bot updates contacts.csv.</div>
 
 <script>
-const data = {"labels": ["Replied", "Awaiting reply", "Ghosted", "Bounced", "Not started"], "values": [21, 74, 1959, 0, 0]};
+const data = {"labels": ["Replied", "Awaiting reply", "Ghosted", "Bounced", "Not started"], "values": [21, 14, 2019, 0, 0]};
 new Chart(document.getElementById('outcomeChart'), {
   type: 'doughnut',
   data: {
